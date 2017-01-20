@@ -1,0 +1,35 @@
+group 'tk.avabin'
+version '1.0-SNAPSHOT'
+
+apply plugin: 'java'
+
+repositories {
+    mavenCentral()
+}
+
+sourceSets {
+    main {
+        java.srcDirs = ['main/java/src']
+        resources.srcDirs = ['main/java/res']
+    }
+    test {
+        java.srcDirs = ['tests/java/src']
+    }
+}
+
+jar {
+    manifest {
+        attributes("Implementation-Title": "The Dungeon Guide",
+                "Implementation-Version": version)
+        attributes 'Main-Class': 'tk.avabin.secretimg.Main'
+    }
+}
+
+dependencies {
+    compile files("main/java/libs")
+    testCompile group: 'junit', name: 'junit', version: '4.11'
+
+    compile group: 'org.bouncycastle', name: 'bcprov-jdk15on', version: '1.55'
+
+
+}
