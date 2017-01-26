@@ -4,32 +4,30 @@ import javafx.beans.binding.Bindings;
 import javafx.beans.binding.StringBinding;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
-import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.control.TextField;
-import javafx.scene.input.MouseEvent;
+import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
-import javafx.scene.shape.Circle;
 import javafx.stage.Popup;
 import javafx.stage.Stage;
-import javafx.stage.WindowEvent;
 
 import java.io.*;
+import java.nio.file.FileVisitResult;
+import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.text.MessageFormat;
 import java.util.*;
 import java.util.concurrent.Callable;
-import java.util.stream.Collectors;
+
+import static java.nio.file.FileVisitResult.CONTINUE;
 
 /**
  * Created by Avabin on 09.11.2016.
  */
-public final class SecretImgUtil {
+final class SecretImgUtil {
 
     // Locale utilities
     private static final ObjectProperty<Locale> LOCALE;
@@ -37,33 +35,40 @@ public final class SecretImgUtil {
         LOCALE = new SimpleObjectProperty<>(getDefaultLocale());
         LOCALE.addListener((observable, oldValue, newValue) -> Locale.setDefault(newValue));
     }
-    public static List<Locale> getSupportedLocales() {
+
+    private static List<Locale> getSupportedLocales() {
         return new ArrayList<>(Arrays.asList(Locale.ENGLISH, Locale.forLanguageTag("pl")));
     }
 
-    public static Locale getDefaultLocale() {
+    private static Locale getDefaultLocale() {
         Locale sysDefault = Locale.getDefault();
         return getSupportedLocales().contains(sysDefault) ? sysDefault : Locale.ENGLISH;
     }
-    public static Locale getLocale() {
+
+    private static Locale getLocale() {
         return LOCALE.get();
     }
-    public static void setLocale(Locale locale) {
+
+    static void setLocale(Locale locale) {
         System.out.println("Setting locale: "+ locale.toString());
         localeProperty().set(locale);
         Locale.setDefault(locale);
     }
-    public static ObjectProperty<Locale> localeProperty() {
+
+    private static ObjectProperty<Locale> localeProperty() {
         return LOCALE;
     }
-    public static String get(final String key, final Object... args) {
+
+    static String get(final String key, final Object... args) {
         ResourceBundle bundle = ResourceBundle.getBundle("bundles/LangBundle", getLocale());
         return MessageFormat.format(bundle.getString(key), args);
     }
-    public static StringBinding createStringBinding(final String key, Object... args) {
+
+    private static StringBinding createStringBinding(final String key, Object... args) {
         return Bindings.createStringBinding(() -> get(key, args), LOCALE);
     }
-    public static StringBinding createStringBinding(Callable<String> func) {
+
+    private static StringBinding createStringBinding(Callable<String> func) {
         return Bindings.createStringBinding(func, LOCALE);
     }
 
@@ -73,18 +78,32 @@ public final class SecretImgUtil {
         label.textProperty().bind(createStringBinding(func));
         return label;
     }
-    public static Button buttonForKey(final String key, final Object... args) {
+
+    static Button buttonForKey(final String key, final Object... args) {
         Button button = new Button();
         button.textProperty().bind(createStringBinding(key, args));
         return button;
     }
-    public static Label labelForKey(final String key, final Object... args) {
+
+    public static CheckBox checkBoxForKey(final String key, final Object... args) {
+        CheckBox checkBox = new CheckBox();
+        checkBox.textProperty().bind(createStringBinding(key, args));
+        return checkBox;
+    }
+
+    public static Alert alertForKey(Alert.AlertType alertType, final String key, final Object... args) {
+        Alert alert = new Alert(alertType);
+        alert.headerTextProperty().bind(createStringBinding(key, args));
+        return alert;
+    }
+
+    static Label labelForKey(final String key, final Object... args) {
         Label label = new Label();
         label.textProperty().bind(createStringBinding(key, args));
         return label;
     }
     // File utils
-    public static File createSettingsFile(String optionalPath) {
+    static File createSettingsFile(String optionalPath) {
         String filename = "settings.properties";
         File settings;
         if(optionalPath != null) settings = new File(optionalPath + System.lineSeparator() + filename);
@@ -96,7 +115,8 @@ public final class SecretImgUtil {
         }
         return settings;
     }
-    public static Properties loadPropertyFile(File propertyFile) {
+
+    static Properties loadPropertyFile(File propertyFile) {
             try {
                 FileInputStream in = new FileInputStream(propertyFile);
                 Properties prop =  new Properties();
@@ -109,7 +129,8 @@ public final class SecretImgUtil {
                 return null;
             }
     }
-    public static void writeProperty(File propertyFile, String key, String value) {
+
+    static void writeProperty(File propertyFile, String key, String value) {
         try {
             FileWriter writer = new FileWriter(propertyFile);
             writer.flush();
@@ -121,7 +142,7 @@ public final class SecretImgUtil {
     }
 
     // Popup utility
-    public static Popup createPopup(final String message) {
+    private static Popup createPopup(final String message) {
         final Popup popup = new Popup();
         popup.setAutoFix(true);
         popup.setAutoHide(true);
@@ -137,7 +158,8 @@ public final class SecretImgUtil {
         popup.getContent().add(label);
         return popup;
     }
-    public static void showPopupMessage(final String message, final Stage stage) {
+
+    static void showPopupMessage(final String message, final Stage stage) {
         final Popup popup = createPopup(message);
         popup.setOnShown(e -> {
             popup.setX(stage.getX() + stage.getWidth()/2 - popup.getWidth()/2);
@@ -147,7 +169,7 @@ public final class SecretImgUtil {
     }
 
     //Def gridPane conf
-    public static GridPane defGridPane() {
+    static GridPane defGridPane() {
         GridPane gridPane = new GridPane();
         gridPane.setAlignment(Pos.CENTER);
         gridPane.setHgap(10);
@@ -181,10 +203,47 @@ public final class SecretImgUtil {
     }
 
     // ArrayList with all files to encrypt from selected directory
+    public static Collection getFilesFromDir(File dir) {
+        Collection<File> files = new ArrayList<>();
+        final int[] counter = {0};
+        try {
+            Files.walkFileTree(dir.toPath(), new FileVisitor<Path>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    return CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    if (attrs.isRegularFile()) files.add(file.toFile());
+                    counter[0]++;
+                    System.out.println(counter[0] + "\tFILE: " + file.toFile().getName());
+                    return CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                    System.err.println(Arrays.toString(exc.getStackTrace()));
+                    return CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                    System.out.println(counter[0] + "\t DIR: " + dir.toFile().getName());
+                    return CONTINUE;
+                }
+            });
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return files;
+    }
 
     // passphrase validation util
-    public static boolean validatePassphrase(String passphrase) {
-        return true;
+    static boolean validatePassphrase(String passphrase) {
+        return passphrase.length() >= 8;
     }
 }
 

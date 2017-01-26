@@ -1,7 +1,6 @@
 package tk.avabin.secretimg.GUI;
 
 import javafx.application.Application;
-import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -9,24 +8,27 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextArea;
-import javafx.scene.layout.*;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+import tk.avabin.secretimg.logic.ImageProcessor;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Properties;
 
-/**
- * Created by Avabin on 07.11.2016.
- */
 public class MainGUI extends Application{
     @Override
     public void start(Stage primaryStage) throws Exception {
+
+        ImageProcessor imageProcessor = new ImageProcessor();
+        final String[] pass = new String[1];
         final boolean[] passphraseValid = {false};
-        ArrayList<File> files = new ArrayList<>();
+        final ArrayList<File>[] files = new ArrayList[]{new ArrayList<>()};
         // Files
         File propertyFile = SecretImgUtil.createSettingsFile(null);
         Properties properties = SecretImgUtil.loadPropertyFile(propertyFile);
@@ -48,23 +50,25 @@ public class MainGUI extends Application{
                chooseDirButton = SecretImgUtil.buttonForKey("main.chooseDir"),
                chooseFileButton = SecretImgUtil.buttonForKey("main.chooseFile"),
                encryptButton = SecretImgUtil.buttonForKey("main.encrypt"),
-               decryptButton = SecretImgUtil.buttonForKey("main.decrypt");
+                decryptButton = SecretImgUtil.buttonForKey("main.decrypt"),
+                resetButton = SecretImgUtil.buttonForKey("main.reset");
 
 
         // Text fields and labels
-        Label passphraseLabel = SecretImgUtil.labelForKey("passphrase.label"),
-              mainDirLabel = new Label();
+        Label passphraseLabel = SecretImgUtil.labelForKey("passphrase.label");
               TextArea fileTextArea = new TextArea();
         PasswordField passphraseTextField = new PasswordField();
 
         // Boxes
         HBox localeBox = new HBox(10),
-             mainButtonsBox = new HBox(100);
+                mainButtonsBox = new HBox(10);
 
         //Scenes
         Scene languageChoosing = new Scene(localeGridPane, 400, 200),
               getPassphraseScene = new Scene(grid, 400, 200),
-              mainScene = new Scene(mainPane, 480, 360);
+                mainScene = new Scene(mainPane, 600, 420);
+
+        primaryStage.setResizable(false);
 
         // *************************
         // *Language choosing Scene*
@@ -101,6 +105,7 @@ public class MainGUI extends Application{
                         SecretImgUtil.showPopupMessage(SecretImgUtil.get("passphrase.invalid"), primaryStage);
                     } else {
                         passphraseValid[0] = true;
+                        pass[0] = passphraseTextField.getText();
                     }
                 } else {
                     SecretImgUtil.showPopupMessage(SecretImgUtil.get("passphrase.tooShort"), primaryStage);
@@ -126,8 +131,83 @@ public class MainGUI extends Application{
         //************************
 
         fileTextArea.setEditable(false);
+
         chooseDirButton.setOnAction(event -> {
-            System.out.println("Hello");
+            chooseDirButton.setDisable(true);
+            chooseFileButton.setDisable(true);
+            DirectoryChooser directoryChooser = new DirectoryChooser();
+            directoryChooser.setTitle(SecretImgUtil.get("main.chooseDir"));
+            File dir = directoryChooser.showDialog(primaryStage.getOwner());
+            files[0].addAll(SecretImgUtil.getFilesFromDir(dir));
+            for (File file :
+                    files[0]) {
+                fileTextArea.appendText(file.getAbsolutePath() + "\n");
+            }
+            encryptButton.setDisable(false);
+            decryptButton.setDisable(false);
+        });
+
+        encryptButton.setOnAction(event -> {
+            long progress[] = {0L};
+            ProcessWorker worker = new ProcessWorker(files[0], true, progress);
+            worker.setPass(pass[0]);
+            encryptButton.setDisable(true);
+            decryptButton.setDisable(true);
+            worker.start();
+            System.out.println("Worker started");
+            fileTextArea.clear();
+            Thread runnable = new Thread(() -> {
+                int index = 0;
+                while (true) {
+                    if (System.currentTimeMillis() % 750 == 0) {
+                        fileTextArea.setText("Encrypting:    " + String.valueOf(progress[0]) + "/" + files[0].size() + "" +
+                                "   " + files[0].get(index).getName());
+                        index = (int) progress[0];
+                    }
+                    if (!worker.isAlive()) {
+                        fileTextArea.setText("Encrypting: " + String.valueOf(progress[0]) + "/" + (files[0].size()) + "" +
+                                "   " + files[0].get(index).getName());
+
+                        encryptButton.setDisable(false);
+                        decryptButton.setDisable(false);
+                        files[0] = new ArrayList<>();
+                        fileTextArea.setText(SecretImgUtil.get("main.done"));
+                        break;
+                    }
+                }
+            });
+            runnable.start();
+        });
+
+        decryptButton.setOnAction(event -> {
+            long progress[] = {0L};
+            ProcessWorker worker = new ProcessWorker(files[0], false, progress);
+            encryptButton.setDisable(true);
+            decryptButton.setDisable(true);
+            worker.setPass(pass[0]);
+            fileTextArea.clear();
+            Thread runnable = new Thread(() -> {
+                int index = 0;
+                while (true) {
+                    if (System.currentTimeMillis() % 750 == 0) {
+                        fileTextArea.setText("Decrypting:    " + String.valueOf(progress[0]) + "/" + files[0].size() + "" +
+                                "   " + files[0].get(index).getName());
+                        index = (int) progress[0];
+                    }
+                    if (!worker.isAlive()) {
+                        fileTextArea.setText("Decrypting: " + String.valueOf(progress[0]) + "/" + (files[0].size()) + "" +
+                                "   " + files[0].get(index).getName());
+
+                        encryptButton.setDisable(false);
+                        decryptButton.setDisable(false);
+                        files[0] = new ArrayList<>();
+                        fileTextArea.setText("DONE");
+                        break;
+                    }
+                }
+            });
+            runnable.start();
+            worker.start();
         });
 
         chooseFileButton.setOnAction(event -> {
@@ -135,20 +215,34 @@ public class MainGUI extends Application{
             chooseFileButton.setDisable(true);
             FileChooser fileChooser = new FileChooser();
             fileChooser.setTitle(SecretImgUtil.get("main.chooseFile"));
-            files.addAll(fileChooser.showOpenMultipleDialog(primaryStage.getOwner()));
+            files[0].addAll(fileChooser.showOpenMultipleDialog(primaryStage.getOwner()));
             for (File file :
-                    files) {
+                    files[0]) {
                 fileTextArea.appendText(file.getAbsolutePath() + "\n");
             }
+            encryptButton.setDisable(false);
+            decryptButton.setDisable(false);
+            chooseDirButton.setDisable(false);
+            chooseFileButton.setDisable(false);
+        });
+
+        resetButton.setOnAction(event -> {
+            encryptButton.setDisable(false);
+            decryptButton.setDisable(false);
+            files[0] = new ArrayList<>();
+            fileTextArea.clear();
         });
 
         mainButtonsBox.setAlignment(Pos.CENTER);
-        mainButtonsBox.getChildren().addAll(chooseDirButton, chooseFileButton);
+        mainButtonsBox.getChildren().addAll(chooseDirButton, chooseFileButton, encryptButton, decryptButton, resetButton);
         mainPane.setPadding(new Insets(10, 10, 10, 10));
         mainPane.centerProperty().setValue(fileTextArea);
         mainPane.bottomProperty().setValue(mainButtonsBox);
 
-        String lang = properties.getProperty("lang");
+        String lang = null;
+        if (properties != null) {
+            lang = properties.getProperty("lang");
+        }
         if(lang == null) {
             primaryStage.setScene(languageChoosing);
         } else {
